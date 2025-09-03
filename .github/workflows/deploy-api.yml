@@ -199,7 +199,7 @@ jobs:
   # Validate API configuration using generated specs
   validate-api-config:
     needs: [build-and-test, vars]
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@v1
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@main
     with:
       environment: dev  # Use dev for validation
       api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
@@ -215,7 +215,7 @@ jobs:
     needs: [determine-environment, build-and-test, validate-api-config, vars]
     if: needs.determine-environment.outputs.should_deploy == 'true' && needs.build-and-test.outputs.api-spec-generated == 'true'
     
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@v1
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@main
     with:
       environment: ${{ needs.determine-environment.outputs.environment }}
       service-name: ${{ needs.vars.outputs.SERVICE_NAME }}
