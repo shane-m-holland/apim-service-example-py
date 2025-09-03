@@ -33,3 +33,5 @@ Thumbs.db
 # Env files (if you ever add secrets/config)
 .env
 .env.*
+
+specs/*

@@ -199,11 +199,11 @@ jobs:
   # Validate API configuration using generated specs
   validate-api-config:
     needs: [build-and-test, vars]
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@v1
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@main
     with:
-      environment: dev  # Use dev for validation
+      environment: ${{ inputs.environment }}  
       api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
-      api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
+    #   api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
       config-repo: shane-m-holland/example-apim-infrastructure
       # Note: Validation workflow will need to be updated to support artifacts
       # For now, this validates the config structure
@@ -215,7 +215,7 @@ jobs:
     needs: [determine-environment, build-and-test, validate-api-config, vars]
     if: needs.determine-environment.outputs.should_deploy == 'true' && needs.build-and-test.outputs.api-spec-generated == 'true'
     
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@v1
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@main
     with:
       environment: ${{ needs.determine-environment.outputs.environment }}
       service-name: ${{ needs.vars.outputs.SERVICE_NAME }}
@@ -274,14 +274,14 @@ jobs:
         if [[ "${{ needs.deploy-api.result }}" == "success" ]]; then
           if [[ "${{ needs.post-deployment-test.result }}" == "success" || "${{ needs.post-deployment-test.result }}" == "skipped" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "message=🎉 API deployment and tests successful" >> $GITHUB_OUTPUT
+            echo "message=API deployment and tests successful" >> $GITHUB_OUTPUT
           else
             echo "status=warning" >> $GITHUB_OUTPUT  
-            echo "message=⚠️ API deployed but tests failed" >> $GITHUB_OUTPUT
+            echo "message=API deployed but tests failed" >> $GITHUB_OUTPUT
           fi
         else
           echo "status=failure" >> $GITHUB_OUTPUT
-          echo "message=❌ API deployment failed" >> $GITHUB_OUTPUT
+          echo "message=API deployment failed" >> $GITHUB_OUTPUT
         fi
         
     - name: Post to Slack/Teams (customize as needed)

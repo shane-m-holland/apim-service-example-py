@@ -34,7 +34,7 @@ on:
 env:
   SERVICE_NAME: hello-world  # Change this to your service name
   API_CONFIG_PATH: deployment/api-config.yml
-  API_SPEC_PATH: specs/openapi.yaml
+#   API_SPEC_PATH: specs/openapi.yaml
 
   # Note: API specs are generated during build, not committed to repo
 
@@ -330,8 +330,7 @@ jobs:
             body += `- **APIM Deployment**: ${{ needs.validate-apim-deployment.result == 'success' && '✅ Valid' || '❌ Failed' }}\n`;
           }
           
-          body += `\n**Service**: ${{ env.SERVICE_NAME }}\n`;
-          body += `**API Spec**: ${{ env.API_SPEC_PATH }}\n`;
+          body += `\n**Service**: ${{ env.SERVICE_NAME }}\n`
           body += `**Config**: ${{ env.API_CONFIG_PATH }}\n`;
           
           if (status === 'success') {
