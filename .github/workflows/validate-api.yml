@@ -47,256 +47,84 @@ jobs:
       API_CONFIG_PATH: ${{ env.API_CONFIG_PATH}}
     steps:
       - run: echo "Exposing env vars"  
-  # Build and generate API specification for validation
-  build-and-generate-spec:
+  # Build, test, and generate API specifications
+  build-and-test:
     runs-on: ubuntu-latest
     outputs:
-      spec-generated: ${{ steps.generate.outputs.spec-generated }}
-      spec-file-name: ${{ steps.generate.outputs.spec-file-name }}
+      api-spec-generated: ${{ steps.generate-spec.outputs.spec-generated }}
+      spec-file-name: ${{ steps.generate-spec.outputs.spec-file-name }}
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
     
     - name: Setup build environment
       run: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-        
-        
-    - name: Install dependencies
-      run: source .venv/bin/activate && python export_openapi_yaml.py 
        
         
-    - name: Generate API specification
-      id: generate
+    - name: Install dependencies
       run: |
-        echo "🔧 Generating API specification for validation..."
+        # Add your dependency installation here
+        # Example for Node.js:
+        # npm ci
+        echo "Installing dependencies..."
         
-        # Create output directory
-        mkdir -p generated-specs
-        
-        # Generate spec using same approach as deploy workflow
-        # (Copy the generation logic from deploy-api.yml)
-        
-        # Example: Generate a sample OpenAPI spec
-        cat > generated-specs/${{ env.SERVICE_NAME }}.openapi.json << 'EOF'
-        {
-          "openapi": "3.0.3",
-          "info": {
-            "title": "${{ env.SERVICE_NAME }} API",
-            "version": "1.0.0",
-            "description": "Generated API specification for validation"
-          },
-          "paths": {
-            "/health": {
-              "get": {
-                "summary": "Health check",
-                "responses": {
-                  "200": {
-                    "description": "Service is healthy"
-                  }
-                }
-              }
-            },
-            "/api/users": {
-              "get": {
-                "summary": "Get users",
-                "responses": {
-                  "200": {
-                    "description": "List of users"
-                  }
-                }
-              }
-            }
-          }
-        }
-        EOF
-        
-        SPEC_FILE="generated-specs/${{ env.SERVICE_NAME }}.openapi.json"
+    - name: Generate API specification
+      id: generate-spec
+      run: |
+        echo "🔧 Generating API specification from code..."
+
+        mkdir -p specs
+
+        source .venv/bin/activate && python export_openapi_yaml.py 
+
+        # Verify spec was generated
+        SPEC_FILE="specs/openapi.yaml"
         if [[ -f "$SPEC_FILE" ]]; then
           echo "✅ API specification generated: $SPEC_FILE"
           echo "spec-generated=true" >> $GITHUB_OUTPUT
-          echo "spec-file-name=${{ env.SERVICE_NAME }}.openapi.json" >> $GITHUB_OUTPUT
+          echo "spec-file-name=openapi.yml" >> $GITHUB_OUTPUT
+          
+          # Validate the generated spec
+          npx @apidevtools/swagger-cli validate "$SPEC_FILE"
+          echo "✅ Generated API specification is valid"
         else
           echo "❌ Failed to generate API specification"
-          echo "spec-generated=false" >> $GITHUB_OUTPUT
           exit 1
         fi
         
-    - name: Upload generated specification
-      if: steps.generate.outputs.spec-generated == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: validation-api-specs
-        path: generated-specs/
-        retention-days: 3  # Short retention for validation
-        
-  # Validate the generated API specification  
-  validate-api-spec:
-    needs: [build-and-generate-spec]
-    if: needs.build-and-generate-spec.outputs.spec-generated == 'true'
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download generated specification
-      uses: actions/download-artifact@v4
-      with:
-        name: validation-api-specs
-        path: ./specs
-        
-    - name: Validate OpenAPI specification
-      run: |
-        echo "🔍 Validating generated OpenAPI specification..."
-        
-        SPEC_FILE="specs/${{ needs.build-and-generate-spec.outputs.spec-file-name }}"
-        
-        # Install OpenAPI validator
-        npm install -g @apidevtools/swagger-cli
-        
-        # Validate the OpenAPI spec
-        swagger-cli validate "$SPEC_FILE"
-        echo "✅ Generated OpenAPI specification is valid"
-        
-    - name: Generate API documentation preview
-      if: github.event_name == 'pull_request'
-      continue-on-error: true  # Don't fail validation if docs generation fails
-      run: |
-        echo "📚 Generating API documentation preview..."
-        
-        SPEC_FILE="specs/${{ needs.build-and-generate-spec.outputs.spec-file-name }}"
-        
-        # Generate HTML documentation with Redocly CLI (modern approach)
-        if npx @redocly/cli build-docs "$SPEC_FILE" --output api-docs.html 2>/dev/null; then
-          echo "✅ API documentation generated with @redocly/cli: api-docs.html"
-        else
-          echo "⚠️ @redocly/cli failed, trying legacy redoc-cli..."
-          # Fallback to legacy redoc-cli if available
-          if npx redoc-cli build "$SPEC_FILE" --output api-docs.html 2>/dev/null; then
-            echo "✅ API documentation generated with redoc-cli: api-docs.html"
-          else
-            echo "❌ Failed to generate API documentation with both @redocly/cli and redoc-cli"
-            echo "Creating placeholder documentation file..."
-            cat > api-docs.html << 'EOF'
-                <!DOCTYPE html>
-                <html>
-                <head><title>API Documentation</title></head>
-                <body>
-                  <h1>API Documentation</h1>
-                  <p>Documentation generation failed. Please check the OpenAPI specification.</p>
-                  <p>Spec file: $SPEC_FILE</p>
-                </body>
-                </html>
-                EOF
-            echo "📄 Placeholder documentation created: api-docs.html"
-          fi
-        fi
-        
-    - name: Upload API documentation
-      if: github.event_name == 'pull_request'
-      uses: actions/upload-artifact@v4
-      continue-on-error: true  # Don't fail if upload fails
-      with:
-        name: api-documentation-${{ github.event.pull_request.number }}
-        path: api-docs.html
-        retention-days: 7
-        if-no-files-found: warn  # Warn if documentation file not found
-        
-  # Validate API configuration
-  validate-api-config:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
     
-    - name: Check API configuration exists
-      run: |
-        if [[ -f "${{ env.API_CONFIG_PATH }}" ]]; then
-          echo "✅ API configuration found: ${{ env.API_CONFIG_PATH }}"
-        else
-          echo "❌ API configuration not found: ${{ env.API_CONFIG_PATH }}"
-          echo "Available deployment files:"
-          find deployment/ -name "*.yml" -o -name "*.yaml" -o -name "*.json" 2>/dev/null | head -10
-          exit 1
-        fi
+    - name: Upload API specification artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-specs
+        path: specs/
+        retention-days: 7
         
-    - name: Validate YAML syntax
-      if: endsWith(env.API_CONFIG_PATH, '.yml') || endsWith(env.API_CONFIG_PATH, '.yaml')
-      run: |
-        # Install yq (Go version) for YAML validation
-        YQ_VERSION="v4.44.3"
-        wget -qO /tmp/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
-        sudo install /tmp/yq /usr/local/bin/yq
+    - name: Upload build artifacts (config only)
+      uses: actions/upload-artifact@v4
+      with:
+        name: service-artifacts
+        path: |
+          ${{ env.API_CONFIG_PATH }}
+        retention-days: 7
         
-        # Validate YAML syntax
-        yq eval '.' "${{ env.API_CONFIG_PATH }}" > /dev/null
-        echo "✅ API configuration YAML syntax is valid"
-        
-    - name: Validate JSON syntax
-      if: endsWith(env.API_CONFIG_PATH, '.json')
-      run: |
-        # Validate JSON syntax
-        jq . "${{ env.API_CONFIG_PATH }}" > /dev/null
-        echo "✅ API configuration JSON syntax is valid"
-        
-    - name: Check required fields
-      run: |
-        echo "🔍 Checking required configuration fields..."
-        
-        # Check for required fields in the API config
-        CONFIG_FILE="${{ env.API_CONFIG_PATH }}"
-        MISSING_FIELDS=()
-        
-        # Function to check field in YAML/JSON
-        check_field() {
-          local field="$1"
-          if [[ "$CONFIG_FILE" == *.json ]]; then
-            if ! jq -e ".[0].$field" "$CONFIG_FILE" >/dev/null 2>&1; then
-              MISSING_FIELDS+=("$field")
-            fi
-          else
-            if ! yq eval -e ".[0].$field" "$CONFIG_FILE" >/dev/null 2>&1; then
-              MISSING_FIELDS+=("$field")
-            fi
-          fi
-        }
-        
-        # Check required fields
-        check_field "apiId"
-        check_field "displayName" 
-        check_field "path"
-        check_field "specPath"
-        
-        if [[ ${#MISSING_FIELDS[@]} -gt 0 ]]; then
-          echo "❌ Missing required fields in API configuration:"
-          for field in "${MISSING_FIELDS[@]}"; do
-            echo "  - $field"
-          done
-          exit 1
-        else
-          echo "✅ All required fields present in API configuration"
-        fi
-        
-  # Validate against APIM deployment (dry run with artifacts)
-  validate-apim-deployment:
-    needs: [build-and-generate-spec, validate-api-spec, validate-api-config, vars]
-    if: inputs.validate_deployment != false && needs.build-and-generate-spec.outputs.spec-generated == 'true'
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@v1
+  # Validate API configuration using generated specs
+  validate-api-config:
+    needs: [build-and-test, vars]
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@main
     with:
-      environment: dev  # Use dev environment for validation
-      service-name: ${{ needs.vars.outputs.SERVICE_NAME }}
+      environment: all
       api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
+    #   api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
       config-repo: shane-m-holland/example-apim-infrastructure
-      deployment-mode: deploy
-      dry-run: true  # Important: Only validate, don't actually deploy
-      apim-tooling-version: v1
-      
-      # Use artifact-based specification
-      use-spec-artifact: true
-      spec-artifact-name: validation-api-specs
-      spec-artifact-path: ${{ needs.build-and-generate-spec.outputs.spec-file-name }}
-      
+      # Note: Validation workflow will need to be updated to support artifacts
+      # For now, this validates the config structure
     secrets:
       AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
         
   # Comment on PR with validation results
   comment-on-pr:
-    needs: [validate-api-spec, validate-api-config, validate-apim-deployment]
+    needs: [validate-api-config]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     
@@ -304,9 +132,8 @@ jobs:
     - name: Determine validation status
       id: status
       run: |
-        if [[ "${{ needs.validate-api-spec.result }}" == "success" && \
-              "${{ needs.validate-api-config.result }}" == "success" && \
-              ("${{ needs.validate-apim-deployment.result }}" == "success" || "${{ needs.validate-apim-deployment.result }}" == "skipped") ]]; then
+        if [[ 
+              "${{ needs.validate-api-config.result }}" == "success") ]]; then
           echo "status=success" >> $GITHUB_OUTPUT
           echo "message=All validations passed! ✅" >> $GITHUB_OUTPUT
         else
@@ -323,12 +150,7 @@ jobs:
           
           let body = `## 🔍 API Validation Results\n\n${message}\n\n`;
           body += `### Validation Summary:\n`;
-          body += `- **API Specification**: ${{ needs.validate-api-spec.result == 'success' && '✅ Valid' || '❌ Failed' }}\n`;
           body += `- **API Configuration**: ${{ needs.validate-api-config.result == 'success' && '✅ Valid' || '❌ Failed' }}\n`;
-          
-          if ('${{ needs.validate-apim-deployment.result }}' !== 'skipped') {
-            body += `- **APIM Deployment**: ${{ needs.validate-apim-deployment.result == 'success' && '✅ Valid' || '❌ Failed' }}\n`;
-          }
           
           body += `\n**Service**: ${{ env.SERVICE_NAME }}\n`
           body += `**Config**: ${{ env.API_CONFIG_PATH }}\n`;
