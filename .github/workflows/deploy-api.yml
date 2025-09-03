@@ -274,14 +274,14 @@ jobs:
         if [[ "${{ needs.deploy-api.result }}" == "success" ]]; then
           if [[ "${{ needs.post-deployment-test.result }}" == "success" || "${{ needs.post-deployment-test.result }}" == "skipped" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "message=🎉 API deployment and tests successful" >> $GITHUB_OUTPUT
+            echo "message=API deployment and tests successful" >> $GITHUB_OUTPUT
           else
             echo "status=warning" >> $GITHUB_OUTPUT  
-            echo "message=⚠️ API deployed but tests failed" >> $GITHUB_OUTPUT
+            echo "message=API deployed but tests failed" >> $GITHUB_OUTPUT
           fi
         else
           echo "status=failure" >> $GITHUB_OUTPUT
-          echo "message=❌ API deployment failed" >> $GITHUB_OUTPUT
+          echo "message=API deployment failed" >> $GITHUB_OUTPUT
         fi
         
     - name: Post to Slack/Teams (customize as needed)
