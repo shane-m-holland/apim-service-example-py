@@ -1,0 +1,320 @@
+# Example GitHub Actions Workflow for Service Repository
+# Copy this file to your service repository at: .github/workflows/deploy-api.yml
+#
+# This example demonstrates the ARTIFACT-BASED approach where API specifications
+# are generated during the build process and deployed from artifacts.
+# 
+# For the traditional repository-based approach, see: deploy-api-traditional.yml
+
+name: Deploy API to APIM
+
+on:
+  # Automatic deployment on merges
+#   push:
+#     branches:
+#       - develop      # Deploy to dev environment
+#       - main         # Deploy to prod environment
+    # paths:
+    #   - 'src/**'
+    #   - 'specs/**'
+    #   - 'deployment/**'
+      
+  # Manual deployment with environment selection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      deployment_mode:
+        description: 'Deployment mode'
+        type: choice
+        options:
+          - sync    # Deploy only changed APIs (recommended)
+          - deploy  # Deploy all APIs
+        default: sync
+      dry_run:
+        description: 'Perform dry run only'
+        type: boolean
+        default: false
+
+# Prevent concurrent deployments to the same environment
+concurrency:
+  group: deploy-api-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'prod' || 'dev') }}
+  cancel-in-progress: false
+
+env:
+  SERVICE_NAME: hello-world  # Change this to your service name
+  API_CONFIG_PATH: deployment/api-config.yml
+  # Note: API_SPEC_PATH not needed in artifact-based approach
+  # Specs are generated and uploaded as artifacts
+
+jobs:
+  # Determine target environment based on branch or manual input
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      should_deploy: ${{ steps.env.outputs.should_deploy }}
+    steps:
+    - id: env
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=dev" >> $GITHUB_OUTPUT
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=prod" >> $GITHUB_OUTPUT
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+        fi
+  # vars workaround
+  vars:
+    runs-on: ubuntu-22.04
+    outputs:
+      SERVICE_NAME: ${{ env.SERVICE_NAME }}
+      API_CONFIG_PATH: ${{ env.API_CONFIG_PATH}}
+    steps:
+      - run: echo "Exposing env vars"      
+  # Build, test, and generate API specifications
+  build-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      api-spec-generated: ${{ steps.generate-spec.outputs.spec-generated }}
+      spec-file-name: ${{ steps.generate-spec.outputs.spec-file-name }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+    
+    - name: Setup build environment
+      run: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+       
+        
+    - name: Install dependencies
+      run: |
+        # Add your dependency installation here
+        # Example for Node.js:
+        # npm ci
+        echo "Installing dependencies..."
+        
+    - name: Run tests
+      run: source .venv/bin/activate && python export_openapi_yaml.py 
+        
+        
+    - name: Generate API specification
+      id: generate-spec
+      run: |
+        echo "🔧 Generating API specification from code..."
+        
+        # Create output directory for generated specs
+        mkdir -p generated-specs
+        
+        # Example spec generation approaches:
+        
+        # For ASP.NET Core with Swashbuckle:
+        # dotnet run --project src/YourAPI --urls "http://localhost:5000" &
+        # sleep 10
+        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
+        #   http://localhost:5000/swagger/v1/swagger.json
+        
+        # For Spring Boot:
+        # ./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8080" &
+        # sleep 15
+        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
+        #   http://localhost:8080/v3/api-docs
+        
+        # For FastAPI:
+        # uvicorn src.main:app --host 0.0.0.0 --port 8000 &
+        # sleep 10
+        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
+        #   http://localhost:8000/openapi.json
+        
+        # For Node.js/Express with Swagger:
+        # npm start &
+        # sleep 10  
+        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
+        #   http://localhost:3000/api-docs.json
+        
+        # Example: Generate a sample OpenAPI spec (replace with your actual generation)
+        cat > generated-specs/${{ env.SERVICE_NAME }}.openapi.json << 'EOF'
+        {
+          "openapi": "3.0.3",
+          "info": {
+            "title": "${{ env.SERVICE_NAME }} API",
+            "version": "1.0.0",
+            "description": "Generated API specification"
+          },
+          "paths": {
+            "/health": {
+              "get": {
+                "summary": "Health check",
+                "responses": {
+                  "200": {
+                    "description": "Service is healthy"
+                  }
+                }
+              }
+            }
+          }
+        }
+        EOF
+        
+        # Verify spec was generated
+        SPEC_FILE="generated-specs/${{ env.SERVICE_NAME }}.openapi.json"
+        if [[ -f "$SPEC_FILE" ]]; then
+          echo "✅ API specification generated: $SPEC_FILE"
+          echo "spec-generated=true" >> $GITHUB_OUTPUT
+          echo "spec-file-name=${{ env.SERVICE_NAME }}.openapi.json" >> $GITHUB_OUTPUT
+          
+          # Validate the generated spec
+          npx @apidevtools/swagger-cli validate "$SPEC_FILE"
+          echo "✅ Generated API specification is valid"
+        else
+          echo "❌ Failed to generate API specification"
+          exit 1
+        fi
+        
+    - name: Upload API specification artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-specs
+        path: generated-specs/
+        retention-days: 7
+        
+    - name: Upload build artifacts (config only)
+      uses: actions/upload-artifact@v4
+      with:
+        name: service-artifacts
+        path: |
+          ${{ env.API_CONFIG_PATH }}
+        retention-days: 7
+        
+  # Validate API configuration using generated specs
+  validate-api-config:
+    needs: [build-and-test, vars]
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@v1
+    with:
+      environment: dev  # Use dev for validation
+      api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
+      api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
+      config-repo: shane-m-holland/example-apim-infrastructure
+      # Note: Validation workflow will need to be updated to support artifacts
+      # For now, this validates the config structure
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+  # Deploy API to APIM using generated specifications
+  deploy-api:
+    needs: [determine-environment, build-and-test, validate-api-config, vars]
+    if: needs.determine-environment.outputs.should_deploy == 'true' && needs.build-and-test.outputs.api-spec-generated == 'true'
+    
+    uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@v1
+    with:
+      environment: ${{ needs.determine-environment.outputs.environment }}
+      service-name: ${{ needs.vars.outputs.SERVICE_NAME }}
+      api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
+      config-repo: shane-m-holland/example-apim-infrastructure
+      deployment-mode: ${{ inputs.deployment_mode || 'sync' }}
+      parallel-deployment: true
+      dry-run: ${{ inputs.dry_run || false }}
+      apim-tooling-version: v1  # Pin to specific version
+      
+      # NEW: Artifact-based specification parameters
+      use-spec-artifact: true
+      spec-artifact-name: api-specs
+      spec-artifact-path: ${{ needs.build-and-test.outputs.spec-file-name }}
+      # build-workflow-run-id not needed - using same workflow run
+      
+    secrets:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+      
+  # Post-deployment testing (optional)
+  post-deployment-test:
+    needs: [determine-environment, deploy-api]
+    if: needs.deploy-api.result == 'success' && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-environment.outputs.environment }}-testing
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run integration tests
+      run: |
+        # Add your integration tests here
+        # These should test the deployed API in the target environment
+        echo "Running post-deployment integration tests..."
+        
+        # Example: Test API endpoints
+        # APIM_BASE_URL="https://afdevapi.developer.azure-api.net/"
+        # curl -f "$APIM_BASE_URL/${{ env.SERVICE_NAME }}/health" || exit 1
+        
+    - name: Performance tests (for production)
+      if: needs.determine-environment.outputs.environment == 'prod'
+      run: |
+        # Add performance tests for production deployments
+        echo "Running performance tests..."
+        
+  # Notify deployment result
+  notify:
+    needs: [determine-environment, deploy-api, post-deployment-test]
+    if: always() && needs.determine-environment.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Determine deployment status
+      id: status
+      run: |
+        if [[ "${{ needs.deploy-api.result }}" == "success" ]]; then
+          if [[ "${{ needs.post-deployment-test.result }}" == "success" || "${{ needs.post-deployment-test.result }}" == "skipped" ]]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "message=🎉 API deployment and tests successful" >> $GITHUB_OUTPUT
+          else
+            echo "status=warning" >> $GITHUB_OUTPUT  
+            echo "message=⚠️ API deployed but tests failed" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "status=failure" >> $GITHUB_OUTPUT
+          echo "message=❌ API deployment failed" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Post to Slack/Teams (customize as needed)
+      run: |
+        echo "${{ steps.status.outputs.message }}"
+        echo "Service: ${{ env.SERVICE_NAME }}"
+        echo "Environment: ${{ needs.determine-environment.outputs.environment }}"
+        echo "Commit: ${{ github.sha }}"
+        
+        # Add your notification logic here
+        # Example Slack webhook:
+        # curl -X POST -H 'Content-type: application/json' \
+        #   --data "{\"text\":\"${{ steps.status.outputs.message }}\nService: ${{ env.SERVICE_NAME }}\nEnvironment: ${{ needs.determine-environment.outputs.environment }}\"}" \
+        #   ${{ secrets.SLACK_WEBHOOK_URL }}
+        
+    - name: Create GitHub deployment status
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const deployment = await github.rest.repos.createDeployment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            ref: context.sha,
+            environment: '${{ needs.determine-environment.outputs.environment }}',
+            description: 'APIM API deployment',
+            auto_merge: false
+          });
+          
+          await github.rest.repos.createDeploymentStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            deployment_id: deployment.data.id,
+            state: '${{ steps.status.outputs.status == 'success' && 'success' || 'failure' }}',
+            description: '${{ steps.status.outputs.message }}',
+            environment_url: 'https://afdevapi.developer.azure-api.net/${{ env.SERVICE_NAME }}'
+          });

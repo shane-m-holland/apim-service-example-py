@@ -1,0 +1,19 @@
+- apiId: hellow-demo-api
+  displayName: Hello World Demo API
+  path: /
+  specPath: ./specs/openapi.yaml
+  format: openapi
+  serviceUrl: https://127.0.0.1:8000
+  protocols:                           
+    - https
+  subscriptionRequired: false          
+  productIds:                         
+    - starter                        
+    - unlimited                        
+  gatewayNames:                       
+    - managed                         
+  tags:                               
+    - demo
+    - public
+  apiDescription: Sample Hello World API for demonstration purposes
+  apiType: http                       
