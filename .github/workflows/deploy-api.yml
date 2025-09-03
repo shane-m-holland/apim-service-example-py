@@ -104,74 +104,21 @@ jobs:
         # npm ci
         echo "Installing dependencies..."
         
-    - name: Run tests
-      run: source .venv/bin/activate && python export_openapi_yaml.py 
-        
-        
     - name: Generate API specification
       id: generate-spec
       run: |
         echo "🔧 Generating API specification from code..."
-        
-        # Create output directory for generated specs
-        mkdir -p generated-specs
-        
-        # Example spec generation approaches:
-        
-        # For ASP.NET Core with Swashbuckle:
-        # dotnet run --project src/YourAPI --urls "http://localhost:5000" &
-        # sleep 10
-        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
-        #   http://localhost:5000/swagger/v1/swagger.json
-        
-        # For Spring Boot:
-        # ./mvnw spring-boot:run -Dspring-boot.run.arguments="--server.port=8080" &
-        # sleep 15
-        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
-        #   http://localhost:8080/v3/api-docs
-        
-        # For FastAPI:
-        # uvicorn src.main:app --host 0.0.0.0 --port 8000 &
-        # sleep 10
-        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
-        #   http://localhost:8000/openapi.json
-        
-        # For Node.js/Express with Swagger:
-        # npm start &
-        # sleep 10  
-        # curl -o generated-specs/${{ env.SERVICE_NAME }}.openapi.json \
-        #   http://localhost:3000/api-docs.json
-        
-        # Example: Generate a sample OpenAPI spec (replace with your actual generation)
-        cat > generated-specs/${{ env.SERVICE_NAME }}.openapi.json << 'EOF'
-        {
-          "openapi": "3.0.3",
-          "info": {
-            "title": "${{ env.SERVICE_NAME }} API",
-            "version": "1.0.0",
-            "description": "Generated API specification"
-          },
-          "paths": {
-            "/health": {
-              "get": {
-                "summary": "Health check",
-                "responses": {
-                  "200": {
-                    "description": "Service is healthy"
-                  }
-                }
-              }
-            }
-          }
-        }
-        EOF
-        
+
+        mkdir -p specs
+
+        source .venv/bin/activate && python export_openapi_yaml.py 
+
         # Verify spec was generated
-        SPEC_FILE="generated-specs/${{ env.SERVICE_NAME }}.openapi.json"
+        SPEC_FILE="specs/openapi.yaml"
         if [[ -f "$SPEC_FILE" ]]; then
           echo "✅ API specification generated: $SPEC_FILE"
           echo "spec-generated=true" >> $GITHUB_OUTPUT
-          echo "spec-file-name=${{ env.SERVICE_NAME }}.openapi.json" >> $GITHUB_OUTPUT
+          echo "spec-file-name=openapi.yml" >> $GITHUB_OUTPUT
           
           # Validate the generated spec
           npx @apidevtools/swagger-cli validate "$SPEC_FILE"
@@ -181,11 +128,12 @@ jobs:
           exit 1
         fi
         
+    
     - name: Upload API specification artifact
       uses: actions/upload-artifact@v4
       with:
         name: api-specs
-        path: generated-specs/
+        path: specs/
         retention-days: 7
         
     - name: Upload build artifacts (config only)
@@ -195,20 +143,6 @@ jobs:
         path: |
           ${{ env.API_CONFIG_PATH }}
         retention-days: 7
-        
-  # Validate API configuration using generated specs
-  validate-api-config:
-    needs: [build-and-test, vars]
-    uses: shane-m-holland/azure-apim-bicep/.github/workflows/validate-config.yml@main
-    with:
-      environment: ${{ inputs.environment }}  
-      api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
-    #   api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
-      config-repo: shane-m-holland/example-apim-infrastructure
-      # Note: Validation workflow will need to be updated to support artifacts
-      # For now, this validates the config structure
-    secrets:
-      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
 
   # Deploy API to APIM using generated specifications
   deploy-api:
