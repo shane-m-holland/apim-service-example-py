@@ -146,7 +146,7 @@ jobs:
 
   # Deploy API to APIM using generated specifications
   deploy-api:
-    needs: [determine-environment, build-and-test, validate-api-config, vars]
+    needs: [determine-environment, build-and-test, vars]
     if: needs.determine-environment.outputs.should_deploy == 'true' && needs.build-and-test.outputs.api-spec-generated == 'true'
     
     uses: shane-m-holland/azure-apim-bicep/.github/workflows/deploy-api.yml@main
