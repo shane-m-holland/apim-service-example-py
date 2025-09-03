@@ -203,7 +203,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}  
       api-config-path: ${{ needs.vars.outputs.API_CONFIG_PATH }}
-      api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
+    #   api-spec-path: ${{ needs.build-and-test.outputs.spec-file-name }}
       config-repo: shane-m-holland/example-apim-infrastructure
       # Note: Validation workflow will need to be updated to support artifacts
       # For now, this validates the config structure
