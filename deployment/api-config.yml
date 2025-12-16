@@ -3,7 +3,7 @@
   path: /hello-world
   specPath: ./specs/openapi.yaml
   format: openapi
-  serviceUrl: https://127.0.0.1:8000
+  serviceUrl: https://ileocecal-elnora-progambling.ngrok-free.dev/
   protocols:                           
     - https
   subscriptionRequired: false          
@@ -16,4 +16,11 @@
     - demo
     - public
   apiDescription: Sample Hello World API for demonstration purposes
-  apiType: http                       
+  apiType: https
+  policies:
+    inbound:
+      - type: validate-jwt
+        header-name: Authorization
+        failed-validation-httpcode: 401
+        openid-config:
+          url: https://dev-62exur2f3z3whnwh.us.auth0.com/.well-known/openid-configuration
