@@ -17,10 +17,3 @@
     - public
   apiDescription: Sample Hello World API for demonstration purposes
   apiType: https
-  policies:
-    inbound:
-      - type: validate-jwt
-        header-name: Authorization
-        failed-validation-httpcode: 401
-        openid-config:
-          url: https://dev-62exur2f3z3whnwh.us.auth0.com/.well-known/openid-configuration
