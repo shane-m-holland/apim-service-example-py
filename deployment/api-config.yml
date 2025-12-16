@@ -16,4 +16,4 @@
     - demo
     - public
   apiDescription: Sample Hello World API for demonstration purposes
-  apiType: https
+  apiType: http                       
